@@ -15,7 +15,7 @@ Source: plot.asm
     13 				        .proc main
     14
     15 				        ; close IOCB6 first (good practice)
-    16 FFFF> 2000-204A> A2 60	        ldx #$60            ; IOCB6
+    16 FFFF> 2000-2058> A2 60	        ldx #$60            ; IOCB6
     17 2002 A9 0C		        lda #$0C            ; CLOSE command
     18 2004 9D 42 03		        sta ICCOM,x
     19 2007 20 56 E4		        jsr CIOV
@@ -24,7 +24,7 @@ Source: plot.asm
     22 200A A2 60		        ldx #$60            ; IOCB6
     23 200C A9 03		        lda #$03            ; OPEN command
     24 200E 9D 42 03		        sta ICCOM,x
-    25 2011 A9 48		        lda #<scrname       ; point to "S:"
+    25 2011 A9 56		        lda #<scrname       ; point to "S:"
     26 2013 9D 44 03		        sta ICBAL,x
     27 2016 A9 20		        lda #>scrname
     28 2018 9D 45 03		        sta ICBAH,x
@@ -46,23 +46,33 @@ Source: plot.asm
     44 202D A9 1E		        lda #$1E
     45 202F 8D C4 02		        sta $02C4           ; COLOR0 shadow — for pixel value $01
     46
-    47 2032 A5 58		        lda $58             ; low byte of screen RAM address
-    48 2034 18			        clc
-    49 2035 69 FF		        adc #$FF            ; add low byte of offset $EFF
-    50 2037 85 80		        sta $80             ; store in zero page pointer
-    51 2039 A5 59		        lda $59             ; high byte
-    52 203B 69 0E		        adc #$0E            ; add high byte of offset $EFF
-    53 203D 85 81		        sta $81             ; store high byte
-    54
-    55 203F A0 00		        ldy #0
-    56 2041 A9 01		        lda #$01            ; color 1 pixel value
-    57 2043 91 80		        sta ($80),y         ; write pixel!
-    58
-    59 2045			stop:
-    60 2045 4C 45 20		        jmp stop
-    61
-    62 				        .endp
-    63
-    64 2048 53 3A 9B		scrname .byte 'S:',$9B      ; device name with end of line marker
-    65
-    66 02E0-02E1> 00 20		        run main
+    47 2032 A9 1E		        lda #$1E
+    48 2034 8D C4 02		        sta $02C4       ; shadow
+    49 2037 8D 16 D0		        sta $D016       ; COLPF0 hardware register directly!
+    50
+    51 				; wait for VBI so color gets copied to hardware
+    52 203A A5 14		        lda $14             ; frame counter
+    53 203C			waitclr:
+    54 203C C5 14		        cmp $14
+    55 203E F0 FC		        beq waitclr         ; wait for next frame
+    56
+    57 2040 A5 58		        lda $58             ; low byte of screen RAM address
+    58 2042 18			        clc
+    59 2043 69 7F		        adc #$7F            ; add low byte of offset $EFF
+    60 2045 85 80		        sta $80             ; store in zero page pointer
+    61 2047 A5 59		        lda $59             ; high byte
+    62 2049 69 0C		        adc #$0C            ; add high byte of offset $EFF
+    63 204B 85 81		        sta $81             ; store high byte
+    64
+    65 204D A0 00		        ldy #0
+    66 204F A9 55		        lda #$55            ; color 1 pixel value
+    67 2051 91 58		        sta ($58),y         ; write pixel!
+    68
+    69 2053			stop:
+    70 2053 4C 53 20		        jmp stop
+    71
+    72 				        .endp
+    73
+    74 2056 53 3A 9B		scrname .byte 'S:',$9B      ; device name with end of line marker
+    75
+    76 02E0-02E1> 00 20		        run main

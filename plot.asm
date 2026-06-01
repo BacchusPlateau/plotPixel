@@ -44,17 +44,27 @@ SAVMSC  = $58       ; zero page — screen RAM address low
         lda #$1E
         sta $02C4           ; COLOR0 shadow — for pixel value $01
 
+        lda #$1E
+        sta $02C4       ; shadow
+        sta $D016       ; COLPF0 hardware register directly!
+
+; wait for VBI so color gets copied to hardware
+        lda $14             ; frame counter
+waitclr:
+        cmp $14
+        beq waitclr         ; wait for next frame
+
         lda $58             ; low byte of screen RAM address
         clc
-        adc #$FF            ; add low byte of offset $EFF
+        adc #$7F            ; add low byte of offset $EFF
         sta $80             ; store in zero page pointer
         lda $59             ; high byte
-        adc #$0E            ; add high byte of offset $EFF
+        adc #$0C            ; add high byte of offset $EFF
         sta $81             ; store high byte
 
         ldy #0
-        lda #$01            ; color 1 pixel value
-        sta ($80),y         ; write pixel!
+        lda #$55            ; color 1 pixel value
+        sta ($58),y         ; write pixel!
 
 stop:
         jmp stop
