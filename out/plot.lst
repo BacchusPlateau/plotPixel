@@ -1,0 +1,61 @@
+mads 2.1.5 build 3 (21 Feb 22)
+Source: plot.asm
+     1 				; Plot.asm
+     2 				;   main file for experimenting with graphics
+     3
+     4 				; IOCB 6 fields
+     5 = E456			CIOV    = $E456                         ; OS CIO entry point
+     6 = 0362			ICCOM   = $0362                         ; IOCB 6 command
+     7 = 036A			ICAX1   = $036A                         ; IOCB 6 auxiliary byte 1
+     8 = 036B			ICAX2   = $036B                         ; IOCB 6 auxiliary byte 2
+     9 = 0364			ICBAL   = $0364                         ; IOCB 6 buffer address low
+    10 = 0365			ICBAH   = $0365                         ; IOCB 6 buffer address high
+    11 = 0368			ICBLL   = $0368                         ; IOCB 6 buffer length low
+    12 = 0369			ICBLH   = $0369                         ; IOCB 6 buffer length high
+    13
+    14
+    15 				        org $2000                       ; place the following code at memory address $2000
+    16
+    17
+    18 				        .proc main                      ; declare procedure named "main", begin its scope
+    19
+    20 				; Open GR.7 full screen
+    21 FFFF> 2000-202C> A9 03	        lda #$03                        ; $03 = OPEN command
+    22 2002 8D 62 03		        sta ICCOM                       ; store command in IOCB 6
+    23 2005 A9 0C		        lda #$0C                        ; $0C = GR.7 + no text window
+    24 2007 8D 6A 03		        sta ICAX1                       ; store graphics mode
+    25 200A A9 00		        lda #$00                        ; 
+    26 200C 8D 6B 03		        sta ICAX2                       ; clear aux byte 2
+    27 200F A2 60		        ldx #$60                        ; X = $60 tells CIOV to use IOCB 6
+    28 				        
+    29
+    30 				; point ICBAL/ICBAH to device name
+    31 2011 A9 2B		        lda #<devname
+    32 2013 8D 64 03		        sta ICBAL
+    33 2016 A9 20		        lda #>devname
+    34 2018 8D 65 03		        sta ICBAH
+    35 201B A9 02		        lda #2                          ; length of "S:"
+    36 201D 8D 68 03		        sta ICBLL
+    37 2020 A9 00		        lda #0
+    38 2022 8D 69 03		        sta ICBLH
+    39
+    40 2025 20 56 E4		        jsr CIOV                        ; call OS CIO
+    41
+    42 2028			stop:
+    43 2028 4C 28 20		        jmp stop                        ; GOTO stop                   (infinite loop = program halts here)
+    44
+    45 				        .endp                           ; end of main procedure
+    46
+    47 				; =====================================================================
+    48 				; DATA section
+    49 				; =====================================================================
+    50
+    51 202B			        .local devname 
+    52 202B 53 3A		        .byte 'S:'
+    53 				        .endl
+    54
+    55 				; =====================================================================
+    56 				; ENTRY POINT
+    57 				; =====================================================================
+    58
+    59 02E0-02E1> 00 20		        run main                        ; set Atari run address to main (auto-execute when program loads)
