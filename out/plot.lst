@@ -1,78 +1,62 @@
 mads 2.1.5 build 3 (21 Feb 22)
 Source: plot.asm
      1 				; Plot.asm
-     2 = E456			CIOV    = $E456     ; OS CIO entry point
-     3 = 0342			ICCOM   = $0342     ; IOCB base command  
-     4 = 0344			ICBAL   = $0344     ; buffer address low
-     5 = 0345			ICBAH   = $0345     ; buffer address high
-     6 = 034A			ICAX1   = $034A     ; aux byte 1
-     7 = 034B			ICAX2   = $034B     ; aux byte 2
-     8 = 0058			SAVMSC  = $58       ; zero page — screen RAM address low
-     9 				                    ; $59 = high byte
-    10
-    11 				        org $2000
-    12
-    13 				        .proc main
+     2 				;   Draw a single yellow pixel on the Atari 800XL
+     3 				;   Using CIO to open GR.7 then writing directly to screen RAM
+     4
+     5 = E456			CIOV    = $E456     ; OS CIO entry point
+     6 = 0342			ICCOM   = $0342     ; IOCB base command
+     7 = 0344			ICBAL   = $0344     ; buffer address low
+     8 = 0345			ICBAH   = $0345     ; buffer address high
+     9 = 034A			ICAX1   = $034A     ; aux byte 1
+    10 = 034B			ICAX2   = $034B     ; aux byte 2
+    11 = 0058			SAVMSC  = $58       ; zero page — screen RAM address low ($59 = high byte)
+    12 = 004D			ATRACT  = $4D       ; attract mode counter — keep at 0 to prevent color washout
+    13 = 004E			ATRMSK  = $4E       ; attract mode color mask
     14
-    15 				        ; close IOCB6 first (good practice)
-    16 FFFF> 2000-2058> A2 60	        ldx #$60            ; IOCB6
-    17 2002 A9 0C		        lda #$0C            ; CLOSE command
-    18 2004 9D 42 03		        sta ICCOM,x
-    19 2007 20 56 E4		        jsr CIOV
-    20
-    21 				        ; open graphics mode 7 on IOCB6
-    22 200A A2 60		        ldx #$60            ; IOCB6
-    23 200C A9 03		        lda #$03            ; OPEN command
-    24 200E 9D 42 03		        sta ICCOM,x
-    25 2011 A9 56		        lda #<scrname       ; point to "S:"
-    26 2013 9D 44 03		        sta ICBAL,x
-    27 2016 A9 20		        lda #>scrname
-    28 2018 9D 45 03		        sta ICBAH,x
-    29 201B A9 07		        lda #$07            ; graphics 7 with text window
-    30 201D 9D 4B 03		        sta ICAX2,x
-    31 2020 A9 0C		        lda #$0C            ; read/write
-    32 2022 9D 4A 03		        sta ICAX1,x
-    33 2025 20 56 E4		        jsr CIOV
-    34
-    35 				        ; set yellow color
-    36 2028 A9 1E		        lda #$1E
-    37 202A 8D C5 02		        sta $02C5           ; COLOR1 shadow register
+    15 				        org $2000
+    16
+    17 				        .proc main
+    18
+    19 				        ; close IOCB6 first (good practice)
+    20 FFFF> 2000-2049> A2 60	        ldx #$60            ; IOCB6
+    21 2002 A9 0C		        lda #$0C            ; CLOSE command
+    22 2004 9D 42 03		        sta ICCOM,x
+    23 2007 20 56 E4		        jsr CIOV
+    24
+    25 				        ; open graphics mode 7 with text window on IOCB6
+    26 200A A2 60		        ldx #$60            ; IOCB6
+    27 200C A9 03		        lda #$03            ; OPEN command
+    28 200E 9D 42 03		        sta ICCOM,x
+    29 2011 A9 47		        lda #<scrname       ; point to device name "S:"
+    30 2013 9D 44 03		        sta ICBAL,x
+    31 2016 A9 20		        lda #>scrname
+    32 2018 9D 45 03		        sta ICBAH,x
+    33 201B A9 07		        lda #$07            ; graphics mode 7 with text window
+    34 201D 9D 4B 03		        sta ICAX2,x
+    35 2020 A9 0C		        lda #$0C            ; read/write access
+    36 2022 9D 4A 03		        sta ICAX1,x
+    37 2025 20 56 E4		        jsr CIOV            ; call OS CIO — sets up display list and screen RAM
     38
-    39 				        ; find screen RAM address from SAVMSC
-    40 				        ; lower right pixel is at last byte of screen RAM
-    41 				        ; GR.7 = 160x96, 40 bytes per row, 96 rows = 3840 bytes
-    42 				        ; last byte = SAVMSC + 3839 = SAVMSC + $EFF
-    43
-    44 202D A9 1E		        lda #$1E
-    45 202F 8D C4 02		        sta $02C4           ; COLOR0 shadow — for pixel value $01
+    39 				        ; fill screen with black
+    40 2028 A2 00		        ldx #0
+    41 202A			clearscreen:
+    42 202A A9 00		        lda #$00
+    43 202C 9D 60 B0		        sta $B060,x
+    44 202F E8			        inx
+    45 2030 D0 F8		        bne clearscreen
     46
-    47 2032 A9 1E		        lda #$1E
-    48 2034 8D C4 02		        sta $02C4       ; shadow
-    49 2037 8D 16 D0		        sta $D016       ; COLPF0 hardware register directly!
-    50
-    51 				; wait for VBI so color gets copied to hardware
-    52 203A A5 14		        lda $14             ; frame counter
-    53 203C			waitclr:
-    54 203C C5 14		        cmp $14
-    55 203E F0 FC		        beq waitclr         ; wait for next frame
-    56
-    57 2040 A5 58		        lda $58             ; low byte of screen RAM address
-    58 2042 18			        clc
-    59 2043 69 7F		        adc #$7F            ; add low byte of offset $EFF
-    60 2045 85 80		        sta $80             ; store in zero page pointer
-    61 2047 A5 59		        lda $59             ; high byte
-    62 2049 69 0C		        adc #$0C            ; add high byte of offset $EFF
-    63 204B 85 81		        sta $81             ; store high byte
-    64
-    65 204D A0 00		        ldy #0
-    66 204F A9 55		        lda #$55            ; color 1 pixel value
-    67 2051 91 58		        sta ($58),y         ; write pixel!
-    68
-    69 2053			stop:
-    70 2053 4C 53 20		        jmp stop
-    71
-    72 				        .endp
-    73
-    74 2056 53 3A 9B		scrname .byte 'S:',$9B      ; device name with end of line marker
-    75
-    76 02E0-02E1> 00 20		        run main
+    47 2032 A9 55		        lda #$55
+    48 2034 8D DF BC		        sta $BCDF
+    49
+    50 2037			stop:
+    51 2037 A9 00 85 4D		        mva #0 ATRACT
+    52 203B A9 FF 85 4E		        mva #$FF ATRMSK
+    53 203F A9 1E 8D C4 02	        mva #$1E $02C4
+    54 2044 4C 37 20		        jmp stop
+    55
+    56 				        .endp
+    57
+    58 2047 53 3A 9B		scrname .byte 'S:',$9B      ; device name with end of line marker
+    59
+    60 02E0-02E1> 00 20		        run main
