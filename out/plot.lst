@@ -1,61 +1,68 @@
 mads 2.1.5 build 3 (21 Feb 22)
 Source: plot.asm
      1 				; Plot.asm
-     2 				;   main file for experimenting with graphics
-     3
-     4 				; IOCB 6 fields
-     5 = E456			CIOV    = $E456                         ; OS CIO entry point
-     6 = 0362			ICCOM   = $0362                         ; IOCB 6 command
-     7 = 036A			ICAX1   = $036A                         ; IOCB 6 auxiliary byte 1
-     8 = 036B			ICAX2   = $036B                         ; IOCB 6 auxiliary byte 2
-     9 = 0364			ICBAL   = $0364                         ; IOCB 6 buffer address low
-    10 = 0365			ICBAH   = $0365                         ; IOCB 6 buffer address high
-    11 = 0368			ICBLL   = $0368                         ; IOCB 6 buffer length low
-    12 = 0369			ICBLH   = $0369                         ; IOCB 6 buffer length high
-    13
+     2 = E456			CIOV    = $E456     ; OS CIO entry point
+     3 = 0342			ICCOM   = $0342     ; IOCB base command  
+     4 = 0344			ICBAL   = $0344     ; buffer address low
+     5 = 0345			ICBAH   = $0345     ; buffer address high
+     6 = 034A			ICAX1   = $034A     ; aux byte 1
+     7 = 034B			ICAX2   = $034B     ; aux byte 2
+     8 = 0058			SAVMSC  = $58       ; zero page — screen RAM address low
+     9 				                    ; $59 = high byte
+    10
+    11 				        org $2000
+    12
+    13 				        .proc main
     14
-    15 				        org $2000                       ; place the following code at memory address $2000
-    16
-    17
-    18 				        .proc main                      ; declare procedure named "main", begin its scope
-    19
-    20 				; Open GR.7 full screen
-    21 FFFF> 2000-202C> A9 03	        lda #$03                        ; $03 = OPEN command
-    22 2002 8D 62 03		        sta ICCOM                       ; store command in IOCB 6
-    23 2005 A9 0C		        lda #$0C                        ; $0C = GR.7 + no text window
-    24 2007 8D 6A 03		        sta ICAX1                       ; store graphics mode
-    25 200A A9 00		        lda #$00                        ; 
-    26 200C 8D 6B 03		        sta ICAX2                       ; clear aux byte 2
-    27 200F A2 60		        ldx #$60                        ; X = $60 tells CIOV to use IOCB 6
-    28 				        
-    29
-    30 				; point ICBAL/ICBAH to device name
-    31 2011 A9 2B		        lda #<devname
-    32 2013 8D 64 03		        sta ICBAL
-    33 2016 A9 20		        lda #>devname
-    34 2018 8D 65 03		        sta ICBAH
-    35 201B A9 02		        lda #2                          ; length of "S:"
-    36 201D 8D 68 03		        sta ICBLL
-    37 2020 A9 00		        lda #0
-    38 2022 8D 69 03		        sta ICBLH
-    39
-    40 2025 20 56 E4		        jsr CIOV                        ; call OS CIO
-    41
-    42 2028			stop:
-    43 2028 4C 28 20		        jmp stop                        ; GOTO stop                   (infinite loop = program halts here)
-    44
-    45 				        .endp                           ; end of main procedure
+    15 				        ; close IOCB6 first (good practice)
+    16 FFFF> 2000-204A> A2 60	        ldx #$60            ; IOCB6
+    17 2002 A9 0C		        lda #$0C            ; CLOSE command
+    18 2004 9D 42 03		        sta ICCOM,x
+    19 2007 20 56 E4		        jsr CIOV
+    20
+    21 				        ; open graphics mode 7 on IOCB6
+    22 200A A2 60		        ldx #$60            ; IOCB6
+    23 200C A9 03		        lda #$03            ; OPEN command
+    24 200E 9D 42 03		        sta ICCOM,x
+    25 2011 A9 48		        lda #<scrname       ; point to "S:"
+    26 2013 9D 44 03		        sta ICBAL,x
+    27 2016 A9 20		        lda #>scrname
+    28 2018 9D 45 03		        sta ICBAH,x
+    29 201B A9 07		        lda #$07            ; graphics 7 with text window
+    30 201D 9D 4B 03		        sta ICAX2,x
+    31 2020 A9 0C		        lda #$0C            ; read/write
+    32 2022 9D 4A 03		        sta ICAX1,x
+    33 2025 20 56 E4		        jsr CIOV
+    34
+    35 				        ; set yellow color
+    36 2028 A9 1E		        lda #$1E
+    37 202A 8D C5 02		        sta $02C5           ; COLOR1 shadow register
+    38
+    39 				        ; find screen RAM address from SAVMSC
+    40 				        ; lower right pixel is at last byte of screen RAM
+    41 				        ; GR.7 = 160x96, 40 bytes per row, 96 rows = 3840 bytes
+    42 				        ; last byte = SAVMSC + 3839 = SAVMSC + $EFF
+    43
+    44 202D A9 1E		        lda #$1E
+    45 202F 8D C4 02		        sta $02C4           ; COLOR0 shadow — for pixel value $01
     46
-    47 				; =====================================================================
-    48 				; DATA section
-    49 				; =====================================================================
-    50
-    51 202B			        .local devname 
-    52 202B 53 3A		        .byte 'S:'
-    53 				        .endl
+    47 2032 A5 58		        lda $58             ; low byte of screen RAM address
+    48 2034 18			        clc
+    49 2035 69 FF		        adc #$FF            ; add low byte of offset $EFF
+    50 2037 85 80		        sta $80             ; store in zero page pointer
+    51 2039 A5 59		        lda $59             ; high byte
+    52 203B 69 0E		        adc #$0E            ; add high byte of offset $EFF
+    53 203D 85 81		        sta $81             ; store high byte
     54
-    55 				; =====================================================================
-    56 				; ENTRY POINT
-    57 				; =====================================================================
+    55 203F A0 00		        ldy #0
+    56 2041 A9 01		        lda #$01            ; color 1 pixel value
+    57 2043 91 80		        sta ($80),y         ; write pixel!
     58
-    59 02E0-02E1> 00 20		        run main                        ; set Atari run address to main (auto-execute when program loads)
+    59 2045			stop:
+    60 2045 4C 45 20		        jmp stop
+    61
+    62 				        .endp
+    63
+    64 2048 53 3A 9B		scrname .byte 'S:',$9B      ; device name with end of line marker
+    65
+    66 02E0-02E1> 00 20		        run main

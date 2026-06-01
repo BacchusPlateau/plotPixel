@@ -1,59 +1,66 @@
 ; Plot.asm
-;   main file for experimenting with graphics
+CIOV    = $E456     ; OS CIO entry point
+ICCOM   = $0342     ; IOCB base command  
+ICBAL   = $0344     ; buffer address low
+ICBAH   = $0345     ; buffer address high
+ICAX1   = $034A     ; aux byte 1
+ICAX2   = $034B     ; aux byte 2
+SAVMSC  = $58       ; zero page — screen RAM address low
+                    ; $59 = high byte
 
-; IOCB 6 fields
-CIOV    = $E456                         ; OS CIO entry point
-ICCOM   = $0362                         ; IOCB 6 command
-ICAX1   = $036A                         ; IOCB 6 auxiliary byte 1
-ICAX2   = $036B                         ; IOCB 6 auxiliary byte 2
-ICBAL   = $0364                         ; IOCB 6 buffer address low
-ICBAH   = $0365                         ; IOCB 6 buffer address high
-ICBLL   = $0368                         ; IOCB 6 buffer length low
-ICBLH   = $0369                         ; IOCB 6 buffer length high
+        org $2000
 
+        .proc main
 
-        org $2000                       ; place the following code at memory address $2000
+        ; close IOCB6 first (good practice)
+        ldx #$60            ; IOCB6
+        lda #$0C            ; CLOSE command
+        sta ICCOM,x
+        jsr CIOV
 
+        ; open graphics mode 7 on IOCB6
+        ldx #$60            ; IOCB6
+        lda #$03            ; OPEN command
+        sta ICCOM,x
+        lda #<scrname       ; point to "S:"
+        sta ICBAL,x
+        lda #>scrname
+        sta ICBAH,x
+        lda #$07            ; graphics 7 with text window
+        sta ICAX2,x
+        lda #$0C            ; read/write
+        sta ICAX1,x
+        jsr CIOV
 
-        .proc main                      ; declare procedure named "main", begin its scope
+        ; set yellow color
+        lda #$1E
+        sta $02C5           ; COLOR1 shadow register
 
-; Open GR.7 full screen
-        lda #$03                        ; $03 = OPEN command
-        sta ICCOM                       ; store command in IOCB 6
-        lda #$0C                        ; $0C = GR.7 + no text window
-        sta ICAX1                       ; store graphics mode
-        lda #$00                        ; 
-        sta ICAX2                       ; clear aux byte 2
-        ldx #$60                        ; X = $60 tells CIOV to use IOCB 6
-        
+        ; find screen RAM address from SAVMSC
+        ; lower right pixel is at last byte of screen RAM
+        ; GR.7 = 160x96, 40 bytes per row, 96 rows = 3840 bytes
+        ; last byte = SAVMSC + 3839 = SAVMSC + $EFF
 
-; point ICBAL/ICBAH to device name
-        lda #<devname
-        sta ICBAL
-        lda #>devname
-        sta ICBAH
-        lda #2                          ; length of "S:"
-        sta ICBLL
-        lda #0
-        sta ICBLH
+        lda #$1E
+        sta $02C4           ; COLOR0 shadow — for pixel value $01
 
-        jsr CIOV                        ; call OS CIO
+        lda $58             ; low byte of screen RAM address
+        clc
+        adc #$FF            ; add low byte of offset $EFF
+        sta $80             ; store in zero page pointer
+        lda $59             ; high byte
+        adc #$0E            ; add high byte of offset $EFF
+        sta $81             ; store high byte
+
+        ldy #0
+        lda #$01            ; color 1 pixel value
+        sta ($80),y         ; write pixel!
 
 stop:
-        jmp stop                        ; GOTO stop                   (infinite loop = program halts here)
+        jmp stop
 
-        .endp                           ; end of main procedure
+        .endp
 
-; =====================================================================
-; DATA section
-; =====================================================================
+scrname .byte 'S:',$9B      ; device name with end of line marker
 
-        .local devname 
-        .byte 'S:'
-        .endl
-
-; =====================================================================
-; ENTRY POINT
-; =====================================================================
-
-        run main                        ; set Atari run address to main (auto-execute when program loads)
+        run main
