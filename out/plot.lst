@@ -70,7 +70,7 @@ Source: plot.asm
     68 				; ON ENTRY: ICCOM must contain the command ($0C = CLOSE)
     69 				; ON EXIT:  IOCB6 is closed and ready to be reopened
     70 				; =====================================================================
-    71 FFFF> 2000-2049> A2 60	        ldx #$60                    ; X = $60        (select IOCB6)
+    71 FFFF> 2000-2060> A2 60	        ldx #$60                    ; X = $60        (select IOCB6)
     72 2002 A9 0C		        lda #$0C                    ; A = $0C        (CLOSE command)
     73 2004 9D 42 03		        sta ICCOM,x                 ; ICCOM = $0C    (store command in IOCB6)
     74 2007 20 56 E4		        jsr CIOV                    ; CALL CIOV      (execute the close)
@@ -86,7 +86,7 @@ Source: plot.asm
     84 200A A2 60		        ldx #$60                    ; X = $60        (select IOCB6)
     85 200C A9 03		        lda #$03                    ; A = $03        (OPEN command)
     86 200E 9D 42 03		        sta ICCOM,x                 ; ICCOM = $03    (store open command)
-    87 2011 A9 47		        lda #<scrname               ; A = low byte of "S:" string address
+    87 2011 A9 5E		        lda #<scrname               ; A = low byte of "S:" string address
     88 2013 9D 44 03		        sta ICBAL,x                 ; ICBAL = low byte (tell CIO device name location)
     89 2016 A9 20		        lda #>scrname               ; A = high byte of "S:" string address
     90 2018 9D 45 03		        sta ICBAH,x                 ; ICBAH = high byte
@@ -104,48 +104,65 @@ Source: plot.asm
    102 				; Full screen RAM is 3200 bytes — we'd need a 16-bit loop for all of it.
    103 				; $00 = %00000000 = all 4 pixels in byte = background color (black)
    104 				; =====================================================================
-   105 2028 A2 00		        ldx #0                      ; X = 0         (loop counter/index)
-   106 202A			clearscreen:
-   107 202A A9 00		        lda #$00                    ; A = $00        (black — all pixels off)
-   108 202C 9D 60 B0		        sta $B060,x                 ; memory[$B060 + X] = $00  (clear this byte)
-   109 202F E8			        inx                         ; X = X + 1     (advance to next byte)
-   110 2030 D0 F8		        bne clearscreen             ; if X != 0 then GOTO clearscreen
-   111 				                                    ; (X wraps from 255 to 0, loop runs 256 times)
-   112
-   113 				; =====================================================================
-   114 				; STEP 4: Draw yellow pixels at lower right corner
-   115 				; Screen RAM last byte is at $BCDF (row 79, byte 39)
-   116 				; $55 = %01010101 = 4 pixels all using COLOR0 = yellow
-   117 				; GR.7 uses color artifacting — adjacent bit pattern determines color
-   118 				; %01 pixel value = COLOR0, but needs correct bit pattern for true color
-   119 				; =====================================================================
-   120 2032 A9 55		        lda #$55                    ; A = $55        (4 yellow pixels)
-   121 2034 8D DF BC		        sta $BCDF                   ; memory[$BCDF] = $55  (write to lower right!)
-   122
-   123 				; =====================================================================
-   124 				; MAIN LOOP
-   125 				; We must continuously reset attract mode every loop iteration
-   126 				; otherwise the OS VBI will desaturate our colors within seconds.
-   127 				; We also continuously write our yellow color to COLOR0 shadow register
-   128 				; to ensure it stays yellow despite OS interference.
-   129 				; =====================================================================
-   130 2037			stop:
-   131 2037 A9 00 85 4D		        mva #0    ATRACT            ; memory[$4D] = 0     (reset attract counter)
-   132 203B A9 FF 85 4E		        mva #$FF  ATRMSK            ; memory[$4E] = $FF   (full color mask — no desaturation)
-   133 203F A9 1E 8D C4 02	        mva #$1E  $02C4             ; memory[$02C4] = $1E (COLOR0 shadow = bright yellow)
-   134 2044 4C 37 20		        jmp stop                    ; GOTO stop           (loop forever)
+   105
+   106 2028 A5 58		        lda $58         ; A = memory[$58]  (low byte of screen RAM address)
+   107 202A 85 80		        sta $80         ; store in zero page pointer low byte
+   108 202C A5 59		        lda $59         ; A = memory[$59]  (high byte of screen RAM address)
+   109 202E 85 81		        sta $81         ; store in zero page pointer high byte
+   110
+   111 2030 A0 00		        ldy #0          ; Y = 0
+   112 2032			clearscreen:
+   113 2032 A9 00		        lda #$00        ; A = $00
+   114 2034 91 80		        sta ($80),y     ; write to memory[strptr + Y] instead of hardcoded $B060
+   115 2036 C8			        iny
+   116 2037 D0 F9		        bne clearscreen
+   117
+   118 				; =====================================================================
+   119 				; STEP 4: Draw yellow pixels at lower right corner
+   120 				; Screen RAM last byte is at $BCDF (row 79, byte 39)
+   121 				; $55 = %01010101 = 4 pixels all using COLOR0 = yellow
+   122 				; GR.7 uses color artifacting — adjacent bit pattern determines color
+   123 				; %01 pixel value = COLOR0, but needs correct bit pattern for true color
+   124 				; =====================================================================
+   125 2039 A9 55		        lda #$55                    ; A = $55        (4 yellow pixels)
+   126 				        
+   127 				        
+   128 203B A5 58		        lda $58         ; A = low byte of SAVMSC
+   129 203D 18			        clc
+   130 203E 69 7F		        adc #$7F        ; add low byte of offset $C7F
+   131 2040 85 82		        sta $82         ; store result low byte (using $82 not $80!)
+   132 2042 A5 59		        lda $59         ; A = high byte of SAVMSC
+   133 2044 69 0C		        adc #$0C        ; add high byte of offset (carry included automatically!)
+   134 2046 85 83		        sta $83         ; store result high byte
    135
-   136 				        .endp                       ; end of main procedure
-   137
-   138 				; =====================================================================
-   139 				; DATA
+   136 2048 A0 00		        ldy #0
+   137 204A A9 55		        lda #$55        ; yellow pixels
+   138 204C 91 82		        sta ($82),y     ; write to calculated lower right address
+   139
    140 				; =====================================================================
-   141 2047 53 3A 9B		scrname .byte 'S:',$9B             ; device name string for CIO OPEN
-   142 				                                    ; 'S:' = screen device
-   143 				                                    ; $9B  = ATASCII end-of-line terminator
-   144
-   145 				; =====================================================================
-   146 				; ENTRY POINT
-   147 				; =====================================================================
-   148 02E0-02E1> 00 20		        run main                    ; set Atari run address to main
-   149 				                                    ; (auto-execute when program loads)
+   141 				; MAIN LOOP
+   142 				; We must continuously reset attract mode every loop iteration
+   143 				; otherwise the OS VBI will desaturate our colors within seconds.
+   144 				; We also continuously write our yellow color to COLOR0 shadow register
+   145 				; to ensure it stays yellow despite OS interference.
+   146 				; =====================================================================
+   147 204E			stop:
+   148 204E A9 00 85 4D		        mva #0    ATRACT            ; memory[$4D] = 0     (reset attract counter)
+   149 2052 A9 FF 85 4E		        mva #$FF  ATRMSK            ; memory[$4E] = $FF   (full color mask — no desaturation)
+   150 2056 A9 1E 8D C4 02	        mva #$1E  $02C4             ; memory[$02C4] = $1E (COLOR0 shadow = bright yellow)
+   151 205B 4C 4E 20		        jmp stop                    ; GOTO stop           (loop forever)
+   152
+   153 				        .endp                       ; end of main procedure
+   154
+   155 				; =====================================================================
+   156 				; DATA
+   157 				; =====================================================================
+   158 205E 53 3A 9B		scrname .byte 'S:',$9B             ; device name string for CIO OPEN
+   159 				                                    ; 'S:' = screen device
+   160 				                                    ; $9B  = ATASCII end-of-line terminator
+   161
+   162 				; =====================================================================
+   163 				; ENTRY POINT
+   164 				; =====================================================================
+   165 02E0-02E1> 00 20		        run main                    ; set Atari run address to main
+   166 				                                    ; (auto-execute when program loads)

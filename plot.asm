@@ -102,13 +102,18 @@ ATRMSK  = $4E       ; attract mode color mask
 ; Full screen RAM is 3200 bytes — we'd need a 16-bit loop for all of it.
 ; $00 = %00000000 = all 4 pixels in byte = background color (black)
 ; =====================================================================
-        ldx #0                      ; X = 0         (loop counter/index)
+
+        lda $58         ; A = memory[$58]  (low byte of screen RAM address)
+        sta $80         ; store in zero page pointer low byte
+        lda $59         ; A = memory[$59]  (high byte of screen RAM address)
+        sta $81         ; store in zero page pointer high byte
+
+        ldy #0          ; Y = 0
 clearscreen:
-        lda #$00                    ; A = $00        (black — all pixels off)
-        sta $B060,x                 ; memory[$B060 + X] = $00  (clear this byte)
-        inx                         ; X = X + 1     (advance to next byte)
-        bne clearscreen             ; if X != 0 then GOTO clearscreen
-                                    ; (X wraps from 255 to 0, loop runs 256 times)
+        lda #$00        ; A = $00
+        sta ($80),y     ; write to memory[strptr + Y] instead of hardcoded $B060
+        iny
+        bne clearscreen
 
 ; =====================================================================
 ; STEP 4: Draw yellow pixels at lower right corner
@@ -118,7 +123,19 @@ clearscreen:
 ; %01 pixel value = COLOR0, but needs correct bit pattern for true color
 ; =====================================================================
         lda #$55                    ; A = $55        (4 yellow pixels)
-        sta $BCDF                   ; memory[$BCDF] = $55  (write to lower right!)
+        
+        
+        lda $58         ; A = low byte of SAVMSC
+        clc
+        adc #$7F        ; add low byte of offset $C7F
+        sta $82         ; store result low byte (using $82 not $80!)
+        lda $59         ; A = high byte of SAVMSC
+        adc #$0C        ; add high byte of offset (carry included automatically!)
+        sta $83         ; store result high byte
+
+        ldy #0
+        lda #$55        ; yellow pixels
+        sta ($82),y     ; write to calculated lower right address
 
 ; =====================================================================
 ; MAIN LOOP
