@@ -1,62 +1,151 @@
 mads 2.1.5 build 3 (21 Feb 22)
 Source: plot.asm
-     1 				; Plot.asm
-     2 				;   Draw a single yellow pixel on the Atari 800XL
-     3 				;   Using CIO to open GR.7 then writing directly to screen RAM
-     4
-     5 = E456			CIOV    = $E456     ; OS CIO entry point
-     6 = 0342			ICCOM   = $0342     ; IOCB base command
-     7 = 0344			ICBAL   = $0344     ; buffer address low
-     8 = 0345			ICBAH   = $0345     ; buffer address high
-     9 = 034A			ICAX1   = $034A     ; aux byte 1
-    10 = 034B			ICAX2   = $034B     ; aux byte 2
-    11 = 0058			SAVMSC  = $58       ; zero page — screen RAM address low ($59 = high byte)
-    12 = 004D			ATRACT  = $4D       ; attract mode counter — keep at 0 to prevent color washout
-    13 = 004E			ATRMSK  = $4E       ; attract mode color mask
+     1 				; =====================================================================
+     2 				; Plot.asm
+     3 				;   Draw yellow pixels on the Atari 800XL in Graphics Mode 7
+     4 				;   Uses CIO (Central I/O) to open the graphics mode, then writes
+     5 				;   pixel data directly to screen RAM.
+     6 				;
+     7 				;   GR.7 screen properties:
+     8 				;   - 160 pixels wide x 96 pixels tall (with text window: 80 rows)
+     9 				;   - 4 colors using color registers
+    10 				;   - Each byte contains 4 pixels (2 bits per pixel)
+    11 				;   - 40 bytes per row x 80 rows = 3200 bytes of screen RAM
+    12 				;   - Pixel value %01010101 ($55) = 4 yellow pixels using COLOR0
+    13 				; =====================================================================
     14
-    15 				        org $2000
-    16
-    17 				        .proc main
-    18
-    19 				        ; close IOCB6 first (good practice)
-    20 FFFF> 2000-2049> A2 60	        ldx #$60            ; IOCB6
-    21 2002 A9 0C		        lda #$0C            ; CLOSE command
-    22 2004 9D 42 03		        sta ICCOM,x
-    23 2007 20 56 E4		        jsr CIOV
-    24
-    25 				        ; open graphics mode 7 with text window on IOCB6
-    26 200A A2 60		        ldx #$60            ; IOCB6
-    27 200C A9 03		        lda #$03            ; OPEN command
-    28 200E 9D 42 03		        sta ICCOM,x
-    29 2011 A9 47		        lda #<scrname       ; point to device name "S:"
-    30 2013 9D 44 03		        sta ICBAL,x
-    31 2016 A9 20		        lda #>scrname
-    32 2018 9D 45 03		        sta ICBAH,x
-    33 201B A9 07		        lda #$07            ; graphics mode 7 with text window
-    34 201D 9D 4B 03		        sta ICAX2,x
-    35 2020 A9 0C		        lda #$0C            ; read/write access
-    36 2022 9D 4A 03		        sta ICAX1,x
-    37 2025 20 56 E4		        jsr CIOV            ; call OS CIO — sets up display list and screen RAM
-    38
-    39 				        ; fill screen with black
-    40 2028 A2 00		        ldx #0
-    41 202A			clearscreen:
-    42 202A A9 00		        lda #$00
-    43 202C 9D 60 B0		        sta $B060,x
-    44 202F E8			        inx
-    45 2030 D0 F8		        bne clearscreen
-    46
-    47 2032 A9 55		        lda #$55
-    48 2034 8D DF BC		        sta $BCDF
-    49
-    50 2037			stop:
-    51 2037 A9 00 85 4D		        mva #0 ATRACT
-    52 203B A9 FF 85 4E		        mva #$FF ATRMSK
-    53 203F A9 1E 8D C4 02	        mva #$1E $02C4
-    54 2044 4C 37 20		        jmp stop
-    55
-    56 				        .endp
-    57
-    58 2047 53 3A 9B		scrname .byte 'S:',$9B      ; device name with end of line marker
+    15 				; =====================================================================
+    16 				; CIO (Central I/O) constants
+    17 				; CIO is the Atari OS I/O system. We use it to open graphics mode.
+    18 				; Each I/O channel uses an IOCB (I/O Control Block) — a fixed block
+    19 				; of memory containing command, device, buffer address, and aux bytes.
+    20 				; We use IOCB6 (base address $0360) for graphics.
+    21 				; X register = $60 tells CIOV which IOCB to use (IOCB6).
+    22 				; =====================================================================
+    23 = E456			CIOV    = $E456     ; OS CIO entry point — call jsr CIOV to execute
+    24 = 0342			ICCOM   = $0342     ; IOCB6 command register
+    25 				                    ;   $03 = OPEN   (open a device)
+    26 				                    ;   $0C = CLOSE  (close a device)
+    27 = 0344			ICBAL   = $0344     ; IOCB6 buffer address low byte
+    28 				                    ;   for OPEN: points to device name string "S:"
+    29 = 0345			ICBAH   = $0345     ; IOCB6 buffer address high byte
+    30 				                    ;   together with ICBAL forms 16-bit pointer to "S:"
+    31 = 034A			ICAX1   = $034A     ; IOCB6 auxiliary byte 1
+    32 				                    ;   for OPEN: $0C = read/write access mode
+    33 = 034B			ICAX2   = $034B     ; IOCB6 auxiliary byte 2
+    34 				                    ;   for OPEN: graphics mode number (7 = GR.7)
+    35
+    36 				; =====================================================================
+    37 				; Screen RAM pointer
+    38 				; After CIO opens GR.7, the OS stores the address of screen RAM
+    39 				; in SAVMSC (two bytes). $58 = low byte, $59 = high byte.
+    40 				; On our 800XL PAL system screen RAM ends up at $B060.
+    41 				; =====================================================================
+    42 = 0058			SAVMSC  = $58       ; zero page address — low byte of screen RAM address
+    43 				                    ; $59 automatically contains the high byte
+    44
+    45 				; =====================================================================
+    46 				; Attract mode constants
+    47 				; The Atari OS has an attract mode that kicks in after inactivity
+    48 				; to prevent screen burn-in. It does this by desaturating all colors
+    49 				; making everything appear as shades of grey/blue.
+    50 				; We must continuously reset these in our main loop to keep colors!
+    51 				; =====================================================================
+    52 = 004D			ATRACT  = $4D       ; attract mode counter — OS increments this each frame
+    53 				                    ; when it reaches a threshold attract mode activates
+    54 				                    ; we keep writing 0 to prevent it from activating
+    55 = 004E			ATRMSK  = $4E       ; attract mode color mask
+    56 				                    ; OS ANDs all colors with this value
+    57 				                    ; $FE strips hue leaving only luminance (grey/blue)
+    58 				                    ; $FF = full color (no masking) — what we want
     59
-    60 02E0-02E1> 00 20		        run main
+    60 				        org $2000                   ; place program at address $2000
+    61
+    62 				        .proc main
+    63
+    64 				; =====================================================================
+    65 				; STEP 1: Close IOCB6
+    66 				; Good practice to close before opening — ensures clean state.
+    67 				; ON ENTRY: X must contain IOCB number × $10 ($60 for IOCB6)
+    68 				; ON ENTRY: ICCOM must contain the command ($0C = CLOSE)
+    69 				; ON EXIT:  IOCB6 is closed and ready to be reopened
+    70 				; =====================================================================
+    71 FFFF> 2000-2049> A2 60	        ldx #$60                    ; X = $60        (select IOCB6)
+    72 2002 A9 0C		        lda #$0C                    ; A = $0C        (CLOSE command)
+    73 2004 9D 42 03		        sta ICCOM,x                 ; ICCOM = $0C    (store command in IOCB6)
+    74 2007 20 56 E4		        jsr CIOV                    ; CALL CIOV      (execute the close)
+    75
+    76 				; =====================================================================
+    77 				; STEP 2: Open Graphics Mode 7
+    78 				; Fills in all IOCB6 fields then calls CIOV to execute the open.
+    79 				; CIO sets up the display list, allocates screen RAM, configures
+    80 				; ANTIC — everything needed for graphics mode automatically.
+    81 				; ON ENTRY: X must contain $60 (IOCB6)
+    82 				; ON EXIT:  GR.7 screen is active, SAVMSC points to screen RAM
+    83 				; =====================================================================
+    84 200A A2 60		        ldx #$60                    ; X = $60        (select IOCB6)
+    85 200C A9 03		        lda #$03                    ; A = $03        (OPEN command)
+    86 200E 9D 42 03		        sta ICCOM,x                 ; ICCOM = $03    (store open command)
+    87 2011 A9 47		        lda #<scrname               ; A = low byte of "S:" string address
+    88 2013 9D 44 03		        sta ICBAL,x                 ; ICBAL = low byte (tell CIO device name location)
+    89 2016 A9 20		        lda #>scrname               ; A = high byte of "S:" string address
+    90 2018 9D 45 03		        sta ICBAH,x                 ; ICBAH = high byte
+    91 201B A9 07		        lda #$07                    ; A = $07        (graphics mode 7)
+    92 201D 9D 4B 03		        sta ICAX2,x                 ; ICAX2 = $07    (store graphics mode number)
+    93 2020 A9 0C		        lda #$0C                    ; A = $0C        (read/write access)
+    94 2022 9D 4A 03		        sta ICAX1,x                 ; ICAX1 = $0C    (store access mode)
+    95 2025 20 56 E4		        jsr CIOV                    ; CALL CIOV      (execute open — sets up entire graphics mode!)
+    96
+    97 				; =====================================================================
+    98 				; STEP 3: Clear Screen RAM to black
+    99 				; Screen RAM at $B060 may contain garbage from previous programs.
+   100 				; We fill 256 bytes with $00 (black = all pixels off).
+   101 				; Note: this only clears the first 256 bytes (one page) of screen RAM.
+   102 				; Full screen RAM is 3200 bytes — we'd need a 16-bit loop for all of it.
+   103 				; $00 = %00000000 = all 4 pixels in byte = background color (black)
+   104 				; =====================================================================
+   105 2028 A2 00		        ldx #0                      ; X = 0         (loop counter/index)
+   106 202A			clearscreen:
+   107 202A A9 00		        lda #$00                    ; A = $00        (black — all pixels off)
+   108 202C 9D 60 B0		        sta $B060,x                 ; memory[$B060 + X] = $00  (clear this byte)
+   109 202F E8			        inx                         ; X = X + 1     (advance to next byte)
+   110 2030 D0 F8		        bne clearscreen             ; if X != 0 then GOTO clearscreen
+   111 				                                    ; (X wraps from 255 to 0, loop runs 256 times)
+   112
+   113 				; =====================================================================
+   114 				; STEP 4: Draw yellow pixels at lower right corner
+   115 				; Screen RAM last byte is at $BCDF (row 79, byte 39)
+   116 				; $55 = %01010101 = 4 pixels all using COLOR0 = yellow
+   117 				; GR.7 uses color artifacting — adjacent bit pattern determines color
+   118 				; %01 pixel value = COLOR0, but needs correct bit pattern for true color
+   119 				; =====================================================================
+   120 2032 A9 55		        lda #$55                    ; A = $55        (4 yellow pixels)
+   121 2034 8D DF BC		        sta $BCDF                   ; memory[$BCDF] = $55  (write to lower right!)
+   122
+   123 				; =====================================================================
+   124 				; MAIN LOOP
+   125 				; We must continuously reset attract mode every loop iteration
+   126 				; otherwise the OS VBI will desaturate our colors within seconds.
+   127 				; We also continuously write our yellow color to COLOR0 shadow register
+   128 				; to ensure it stays yellow despite OS interference.
+   129 				; =====================================================================
+   130 2037			stop:
+   131 2037 A9 00 85 4D		        mva #0    ATRACT            ; memory[$4D] = 0     (reset attract counter)
+   132 203B A9 FF 85 4E		        mva #$FF  ATRMSK            ; memory[$4E] = $FF   (full color mask — no desaturation)
+   133 203F A9 1E 8D C4 02	        mva #$1E  $02C4             ; memory[$02C4] = $1E (COLOR0 shadow = bright yellow)
+   134 2044 4C 37 20		        jmp stop                    ; GOTO stop           (loop forever)
+   135
+   136 				        .endp                       ; end of main procedure
+   137
+   138 				; =====================================================================
+   139 				; DATA
+   140 				; =====================================================================
+   141 2047 53 3A 9B		scrname .byte 'S:',$9B             ; device name string for CIO OPEN
+   142 				                                    ; 'S:' = screen device
+   143 				                                    ; $9B  = ATASCII end-of-line terminator
+   144
+   145 				; =====================================================================
+   146 				; ENTRY POINT
+   147 				; =====================================================================
+   148 02E0-02E1> 00 20		        run main                    ; set Atari run address to main
+   149 				                                    ; (auto-execute when program loads)
