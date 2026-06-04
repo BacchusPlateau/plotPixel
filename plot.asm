@@ -132,57 +132,19 @@ clearscreen:
 ; %01 pixel value = COLOR0, but needs correct bit pattern for true color
 ; =====================================================================
 
-; proc PlotPixel
-; Assumptions:
-; 1. plotX contains X value and plotY contains Y value of pixel to plot
-;
-; Obtain the correct offset from the zero byte video memory to the coordinates
-; given in plotX and plotY
-
-        .proc plotPixel
-
-        ; first compute Y offset
-        lda plotY       ; A = plotY
-        asl             ; Arithmetic Shift Left — multiplies A by 2; 2a
-        asl             ; Arithmetic Shift Left — multiplies A by 2; 4a
-        asl             ; Arithmetic Shift Left — multiplies A by 2; 8a
-        sta temp        ; temp = A
-        asl             ; Arithmetic Shift Left — multiplies A by 2; 16a
-        asl             ; Arithmetic Shift Left — multiplies A by 2; 32a
-        clc             ; clear carry
-        adc temp        ; A = A + temp, or A = plotY * 40
-
-        ; save offset in temp and compute X offset
-        sta temp        ; save plotY × 40 into temp  ← store AFTER the multiplication is done!
-        lda plotX       ; A = plotX
-        lsr             ; A = plotX / 2
-        lsr             ; A = plotX / 4
+        lda #$55                    ; A = $55        (4 yellow pixels)
+        
+        
+        lda $58         ; A = low byte of SAVMSC
         clc
-        adc temp        ; A = (plotY × 40) + (plotX / 4)
-
-        sta temp        ; temp now has the offset converted from (x,y) to an offset
-
-        ; add offset to SAVMSC
-        
-
-        rts
-        .endp
-
-
-        ;lda #$55                    ; A = $55        (4 yellow pixels)
-        
-        
-        ;lda $58         ; A = low byte of SAVMSC
-        ;clc
-        ;adc #$7F        ; add low byte of offset $C7F
-        ;sta $82         ; store result low byte (using $82 not $80!)
-        ;lda $59         ; A = high byte of SAVMSC
-        ;adc #$0C        ; add high byte of offset (carry included automatically!)
-        ;sta $83         ; store result high byte
-
-        ;ldy #0
-        ;lda #$55        ; yellow pixels
-        ;sta ($82),y     ; write to calculated lower right address
+        adc #$7F        ; add low byte of offset $C7F
+        sta $82         ; store result low byte (using $82 not $80!)
+        lda $59         ; A = high byte of SAVMSC
+        adc #$0C        ; add high byte of offset (carry included automatically!)
+        sta $83         ; store result high byte
+        ldy #0
+        lda #$55        ; yellow pixels
+        sta ($82),y     ; write to calculated lower right address
 
 ; =====================================================================
 ; MAIN LOOP

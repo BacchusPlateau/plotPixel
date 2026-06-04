@@ -133,17 +133,17 @@ Source: plot.asm
    131 				; GR.7 uses color artifacting — adjacent bit pattern determines color
    132 				; %01 pixel value = COLOR0, but needs correct bit pattern for true color
    133 				; =====================================================================
-   134 2039 A9 55		        lda #$55                    ; A = $55        (4 yellow pixels)
-   135 				        
+   134
+   135 2039 A9 55		        lda #$55                    ; A = $55        (4 yellow pixels)
    136 				        
-   137 203B A5 58		        lda $58         ; A = low byte of SAVMSC
-   138 203D 18			        clc
-   139 203E 69 7F		        adc #$7F        ; add low byte of offset $C7F
-   140 2040 85 82		        sta $82         ; store result low byte (using $82 not $80!)
-   141 2042 A5 59		        lda $59         ; A = high byte of SAVMSC
-   142 2044 69 0C		        adc #$0C        ; add high byte of offset (carry included automatically!)
-   143 2046 85 83		        sta $83         ; store result high byte
-   144
+   137 				        
+   138 203B A5 58		        lda $58         ; A = low byte of SAVMSC
+   139 203D 18			        clc
+   140 203E 69 7F		        adc #$7F        ; add low byte of offset $C7F
+   141 2040 85 82		        sta $82         ; store result low byte (using $82 not $80!)
+   142 2042 A5 59		        lda $59         ; A = high byte of SAVMSC
+   143 2044 69 0C		        adc #$0C        ; add high byte of offset (carry included automatically!)
+   144 2046 85 83		        sta $83         ; store result high byte
    145 2048 A0 00		        ldy #0
    146 204A A9 55		        lda #$55        ; yellow pixels
    147 204C 91 82		        sta ($82),y     ; write to calculated lower right address
